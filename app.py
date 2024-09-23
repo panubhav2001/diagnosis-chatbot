@@ -9,11 +9,11 @@ import os
 # Load API key from .env file
 #load_dotenv()
 openai_api_key = st.secrets["OPENAI_API_KEY"]
-
+model_name = st.secrets["FINE_TUNED_MODEL"]
 # Initialize the OpenAI model with the API key and controlled temperature
 llm = ChatOpenAI(
     api_key=openai_api_key,
-    model='ft:gpt-3.5-turbo-0125:personal::AAD3yAdF',
+    model=model_name,
     temperature=0.15,
     top_p=1,
     frequency_penalty=0,
