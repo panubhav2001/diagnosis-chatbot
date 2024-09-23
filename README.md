@@ -1,8 +1,8 @@
 # 💬 Chatbot template
 
-A simple Streamlit app that shows how to build a chatbot using OpenAI's GPT-3.5.
+An AI enabled Streamlit app that provides diagnosis and traige in the field of Gastroenterology using a fine tuned  OpenAI's GPT-3.5.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://chatbot-template.streamlit.app/)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://diagnosis-chatbot-lgtpbzfrtffg2duvntwv5i.streamlit.app/)
 
 ### How to run it on your own machine
 

@@ -24,7 +24,8 @@ llm = ChatOpenAI(
 st.title("Gastroenterology Symptom Checker Chatbot")
 st.write(
     "This chatbot helps collect your symptoms and provides guidance on gastrointestinal conditions. "
-    "Please enter your details and symptoms to begin. The chatbot will ask relevant follow-up questions based on your responses."
+    "Please enter your details and symptoms to begin. Please enter all your symptoms and the assistant will provide triage and diagnosis."
+    "PLEASE REMEMBER THAT THE DIAGNOSIS MAY BE WRONG. IN CASE OF SEVERE HEALTH ISSUES, KINDLY CONSULT A DOCTOR."
 )
 
 # Template for the updated prompt that includes demographic details
@@ -40,6 +41,7 @@ You are a virtual health assistant specializing in Gastroenterology. A patient i
     5. Offer triage advice, informing the patient whether they need urgent medical care or a regular doctor's visit.
     6. Provide an action plan, including possible lifestyle changes, dietary recommendations, or over-the-counter medications if relevant.
     7. Ensure the response includes both the diagnosis and a clear recommendation for the next steps the patient should take.
+    8. After you make the diagnosis, ask if you can help them with anything else. If the users says yes then start over.
 
 - Use the previous conversation history: {history} to ensure that no information is repeated and the diagnosis and triage are personalized to the patient's context.
 """
