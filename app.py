@@ -3,14 +3,30 @@ from langchain import LLMChain
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.chains.conversation.memory import ConversationSummaryMemory
-#from dotenv import load_dotenv
+from langchain.vectorstores.cassandra import Cassandra
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.schema import Document
+from dotenv import load_dotenv
+import cassio
 import os
 
-# Load API key from .env file
-#load_dotenv()
+# Load environment variables
+load_dotenv()
+
+# Load API key and model details
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 model_name = st.secrets["FINE_TUNED_MODEL"]
-# Initialize the OpenAI model with the API key and controlled temperature
+
+# Astra DB connection setup
+app_token = st.secrets['ASTRA_DB_APPLICATION_TOKEN']
+db_id = st.secrets['ASTRA_DB_ID']
+cassio.init(token=app_token, database_id=db_id)
+
+# Initialize embeddings and vector store for Astra DB
+embeddings = OpenAIEmbeddings(api_key=openai_api_key)
+astra_vector_store = Cassandra(embedding=embeddings, table_name="chatbot_embeddings")
+
+# Initialize the OpenAI model with controlled temperature
 llm = ChatOpenAI(
     api_key=openai_api_key,
     model=model_name,
@@ -20,34 +36,32 @@ llm = ChatOpenAI(
     presence_penalty=0
 )
 
-# Title and description of the chatbot
-st.title("Gastroenterology Symptom Checker Chatbot")
+# Title and description of the chatbot with enhanced formatting
+st.title("🩺 Gastroenterology Symptom Checker Chatbot")
 st.write(
-    "This chatbot helps collect your symptoms and provides guidance on gastrointestinal conditions. "
-    "Please enter your details and symptoms to begin. Please enter all your symptoms and the assistant will provide triage and diagnosis."
-    "PLEASE REMEMBER THAT THE DIAGNOSIS MAY BE WRONG. IN CASE OF SEVERE HEALTH ISSUES, KINDLY CONSULT A DOCTOR."
+    "This chatbot assists in identifying gastrointestinal conditions based on the symptoms you provide. "
+    "Please enter your symptoms and follow the instructions.\n"
+    "⚠️ **Note**: This tool is not a substitute for professional medical advice. In case of severe symptoms, consult a doctor."
 )
 
-# Template for the updated prompt that includes demographic details
+# Updated prompt template with follow-up questions for diagnosis
 prompt_template = """
-You are a virtual health assistant specializing in Gastroenterology. A patient is describing their symptoms in a single message.
+You are a virtual health assistant specializing in Gastroenterology. A patient is describing their symptoms.
 
-- The patient has reported: {input}.
-- Your task is to:
-    1. Collect all symptoms in one go, asking the patient to provide a complete description of their symptoms in a single message.
-    2. Once the symptoms are provided, analyze them and diagnose the most likely gastrointestinal condition (e.g., GERD, IBS, Crohn's disease).
-    3. Avoid repetitive or unnecessary follow-up questions by using the provided information effectively.
-    4. Based on the symptoms, immediately provide a diagnosis for the condition that most closely matches the symptoms.
-    5. Offer triage advice, informing the patient whether they need urgent medical care or a regular doctor's visit.
-    6. Provide an action plan, including possible lifestyle changes, dietary recommendations, or over-the-counter medications if relevant.
-    7. Ensure the response includes both the diagnosis and a clear recommendation for the next steps the patient should take.
-    8. After you make the diagnosis, ask if you can help them with anything else. If the users says yes then start over.
-
-- Use the previous conversation history: {history} to ensure that no information is repeated and the diagnosis and triage are personalized to the patient's context.
+- The patient has reported: {input_with_data}.
+- Based on relevant past interactions and the current symptoms, your task is to:
+    1. Immediately identify potential gastrointestinal conditions related to the reported symptoms.
+    2. Diagnose the most likely gastrointestinal condition(s).
+    3. Provide triage advice based on symptom severity:
+        - For mild symptoms, suggest home care or lifestyle changes.
+        - For moderate symptoms, recommend a doctor's visit.
+        - For severe symptoms, advise urgent medical attention.
+    4. Offer a detailed action plan including lifestyle changes and medications if relevant.
+    5. Summarize the diagnosis and triage at the end of each response.
 """
 
 # Create a LangChain PromptTemplate
-prompt = PromptTemplate(input_variables=["input", "history"], template=prompt_template)
+prompt = PromptTemplate(input_variables=["input_with_data", "history"], template=prompt_template)
 
 # Initialize conversation summary memory with the LLM
 memory = ConversationSummaryMemory(llm=llm, return_messages=True)
@@ -65,18 +79,23 @@ if "gender" not in st.session_state:
 
 # Collect user demographic details (age and gender)
 if not st.session_state.age or not st.session_state.gender:
-    st.write("Please enter your demographic details to proceed.")
+    st.write("### Please enter your demographic details to proceed.")
     
-    st.session_state.age = st.text_input("Please enter your age:", value=st.session_state.age)
-    st.session_state.gender = st.selectbox("Please select your gender:", ["", "Male", "Female", "Other"], index=0)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.age = st.text_input("Enter your age:", value=st.session_state.age)
+    with col2:
+        st.session_state.gender = st.selectbox("Select your gender:", ["", "Male", "Female", "Other"], index=0)
 
 # Ensure both age and gender are provided before continuing
 if st.session_state.age and st.session_state.gender and st.session_state.gender != "":
-
-    # Display previous chat messages
+    
+    # Display previous chat messages with color differentiation using native Streamlit methods
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        if message["role"] == "assistant":
+            st.write(f"**Assistant:** {message['content']}", key=message['content'])
+        else:
+            st.write(f"**User:** {message['content']}", key=message['content'])
 
     # Input field for user symptoms or follow-up responses
     if user_input := st.chat_input("Please describe your gastrointestinal symptoms or answer the assistant's question:"):
@@ -86,22 +105,38 @@ if st.session_state.age and st.session_state.gender and st.session_state.gender 
 
         # Store and display the user's message
         st.session_state.messages.append({"role": "user", "content": combined_input})
-        with st.chat_message("user"):
-            st.markdown(combined_input)
+        st.write(f"**User:** {combined_input}")
 
-        # Pass the combined user details and conversation history to the LLMChain
-        response = chain.invoke({
-            "input": combined_input,
-            "history": "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])  # Ensure full history is passed
-        })
+        # Spinner while waiting for AI response
+        with st.spinner('Processing your input...'):
+            # Retrieve relevant conversation history from Astra DB using vector search
+            relevant_docs = astra_vector_store.similarity_search(combined_input, k=3)
 
-        # Display the AI assistant's response
-        assistant_response = response['text']
-        with st.chat_message("assistant"):
-            st.markdown(assistant_response)
+            # If no relevant documents found, provide an empty string for retrieved_data
+            if relevant_docs:
+                retrieved_data = "\n".join([doc.page_content for doc in relevant_docs])
+            else:
+                retrieved_data = ""
 
-        # Store the assistant's response in session state
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            # Combine input and retrieved_data into one key
+            input_with_data = f"{combined_input}\nRetrieved data: {retrieved_data}"
+
+            # Store new user input in Astra DB
+            astra_vector_store.add_documents([Document(page_content=combined_input)])
+
+            # Pass the combined input, conversation history, and retrieved data to the LLMChain
+            response = chain.invoke({
+                "input_with_data": input_with_data,  
+                "history": "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.messages])
+            })
+
+            # Display the AI assistant's response
+            assistant_response = response['text']
+            st.write(f"**Assistant:** {assistant_response}")
+
+            # Store the assistant's response in session state and Astra DB
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            astra_vector_store.add_documents([Document(page_content=assistant_response)])
 
 else:
     st.info("Please fill in both your age and gender to proceed.")
