@@ -13,7 +13,7 @@ import os
 # Load environment variables
 load_dotenv()
 
-# Load API key and model details
+# Load API keys and model name from environment variables
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 model_name = st.secrets["FINE_TUNED_MODEL"]
 
@@ -44,21 +44,20 @@ st.write(
     "⚠️ **Note**: This tool is not a substitute for professional medical advice. In case of severe symptoms, consult a doctor."
 )
 
-# Updated prompt template with follow-up questions for diagnosis
 prompt_template = """
-You are a virtual health assistant specializing in Gastroenterology. A patient is describing their symptoms.
-
+You are a virtual health assistant specializing in Gastroenterology. A patient is describing their current symptoms.
 - The patient has reported: {input_with_data}.
-- Based on relevant past interactions and the current symptoms, your task is to:
-    1. Immediately identify potential gastrointestinal conditions related to the reported symptoms.
-    2. Diagnose the most likely gastrointestinal condition(s).
-    3. Provide triage advice based on symptom severity:
+- Please do not reference previous symptoms unless they provide context for the current symptoms.
+- Your task is to:
+    1. Analyze the current symptoms only and diagnose the most likely gastrointestinal condition(s) based on this new information.
+    2. Provide clear triage advice based on the severity of the symptoms:
         - For mild symptoms, suggest home care or lifestyle changes.
-        - For moderate symptoms, recommend a doctor's visit.
+        - For moderate symptoms, recommend scheduling a doctor's visit.
         - For severe symptoms, advise urgent medical attention.
-    4. Offer a detailed action plan including lifestyle changes and medications if relevant.
-    5. Summarize the diagnosis and triage at the end of each response.
+    3. Summarize the diagnosis and next steps clearly for the patient, ensuring that they understand the suggested condition and actions.
+    4. After providing the diagnosis and triage, ask if the patient has any further questions or additional symptoms to discuss.
 """
+
 
 # Create a LangChain PromptTemplate
 prompt = PromptTemplate(input_variables=["input_with_data", "history"], template=prompt_template)
@@ -89,13 +88,13 @@ if not st.session_state.age or not st.session_state.gender:
 
 # Ensure both age and gender are provided before continuing
 if st.session_state.age and st.session_state.gender and st.session_state.gender != "":
-    
-    # Display previous chat messages with color differentiation using native Streamlit methods
+
+    # Display previous chat messages
     for message in st.session_state.messages:
         if message["role"] == "assistant":
-            st.write(f"**Assistant:** {message['content']}", key=message['content'])
+            st.write(f"**Assistant:** {message['content']}")
         else:
-            st.write(f"**User:** {message['content']}", key=message['content'])
+            st.write(f"**User:** {message['content']}")
 
     # Input field for user symptoms or follow-up responses
     if user_input := st.chat_input("Please describe your gastrointestinal symptoms or answer the assistant's question:"):
@@ -137,6 +136,10 @@ if st.session_state.age and st.session_state.gender and st.session_state.gender 
             # Store the assistant's response in session state and Astra DB
             st.session_state.messages.append({"role": "assistant", "content": assistant_response})
             astra_vector_store.add_documents([Document(page_content=assistant_response)])
+
+        # Ask if the user wants to start a new diagnosis
+        if st.button("Start New Diagnosis"):
+            st.session_state.messages = []  # Clear the conversation history
 
 else:
     st.info("Please fill in both your age and gender to proceed.")
