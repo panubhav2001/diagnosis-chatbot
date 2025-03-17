@@ -4,8 +4,9 @@ from langchain.vectorstores.cassandra import Cassandra
 from dotenv import load_dotenv
 import os
 from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.schema import Document  # Import Document class
-from tqdm import tqdm  # Import tqdm for progress bar
+from langchain.schema import Document
+from tqdm import tqdm
+from langchain.text_splitter import RecursiveCharacterTextSplitter  # Import chunking module
 load_dotenv()
 from documents import docs  
 
@@ -28,22 +29,39 @@ def create_db_instance(vector_embeddings):
 
 astra_vector_store = create_db_instance(embeddings)
 
+# Define text chunking parameters
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=800,  # Choose based on document size & retrieval needs
+    chunk_overlap=100
+)
+
 if __name__ == '__main__':
-    # Initialize tqdm progress bar
-    with tqdm(total=len(docs), desc="Inserting documents", unit="doc") as pbar:
-        for doc in docs:
-            astra_vector_store.add_documents([doc])  # Upload each document one by one
-            pbar.update(1)  # Update the progress bar after each document is added
+    chunked_docs = []
     
-    # Print the number of documents inserted
-    print(f"Inserted {len(docs)} documents.")
-    
+    # Split each document into chunks before inserting into the DB
+    for doc in docs:
+        split_chunks = text_splitter.split_text(doc.page_content)
+        
+        # Convert chunks into Document objects while retaining metadata
+        chunked_docs.extend([
+            Document(page_content=chunk, metadata=doc.metadata)
+            for chunk in split_chunks
+        ])
+
+    # Insert chunked documents into the vector store
+    with tqdm(total=len(chunked_docs), desc="Inserting documents", unit="doc") as pbar:
+        for chunk in chunked_docs:
+            astra_vector_store.add_documents([chunk])  # Upload each chunk one by one
+            pbar.update(1)  # Update the progress bar
+
+    print(f"Inserted {len(chunked_docs)} document chunks.")
+
     # Create an index wrapper around the vector store
     astra_vector_index = VectorStoreIndexWrapper(vectorstore=astra_vector_store)
-    
+
     # Set up retriever from vector store
     retriever = astra_vector_store.as_retriever()
-    
+
     # Run a query
     result = retriever.get_relevant_documents("What is gastroenterology?")
     for doc in result:
